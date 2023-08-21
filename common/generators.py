@@ -49,15 +49,20 @@ class ChunkedGenerator:
         assert cameras is None or len(cameras) == len(poses_2d)
     
         # Build lineage info
-        pairs = [] # (seq_idx, start_frame, end_frame, flip) tuples
-        for i in range(len(poses_2d)):
+        pairs = []  # pair生成 # (seq_idx, start_frame, end_frame, flip) tuples
+        for i in range(len(poses_2d)):  # pose_2d中包括训练的所有data， 并且dict内一共4个元素，对应4个相机
             assert poses_3d is None or poses_3d[i].shape[0] == poses_3d[i].shape[0]
             n_chunks = (poses_2d[i].shape[0] + chunk_length - 1) // chunk_length
             offset = (n_chunks * chunk_length - poses_2d[i].shape[0]) // 2
             bounds = np.arange(n_chunks+1)*chunk_length - offset
             augment_vector = np.full(len(bounds - 1), False, dtype=bool)
+            # np.repeat(i, len(bounds - 1)): 初始化一个nparray，长度为（bounds - 1)，数值为index
+            # generate a set of pairs for getting training data，其中一半aug = false， 一半 = true
             pairs += zip(np.repeat(i, len(bounds - 1)), bounds[:-1], bounds[1:], augment_vector)
             if augment:
+                # bounds[:-1]， bounds[1:] for calculating index of consecutive frames
+                # bounds[:-1]：从第一个到倒数第二个；bounds[1:]：从第2个到最后一个；所以两个一直相差1
+                # 再repeat所有的pair一次，但是aug设置为true
                 pairs += zip(np.repeat(i, len(bounds - 1)), bounds[:-1], bounds[1:], ~augment_vector)
 
         # Initialize buffers
@@ -102,7 +107,7 @@ class ChunkedGenerator:
     def next_pairs(self):
         if self.state is None:
             if self.shuffle:
-                pairs = self.random.permutation(self.pairs)
+                pairs = self.random.permutation(self.pairs)  # 打乱pairs顺序，不再是0,1,2,3...的顺序
             else:
                 pairs = self.pairs
             return 0, pairs
@@ -114,24 +119,26 @@ class ChunkedGenerator:
         while enabled:
             start_idx, pairs = self.next_pairs()
             for b_i in range(start_idx, self.num_batches):
-                chunks = pairs[b_i*self.batch_size : (b_i+1)*self.batch_size]
+                chunks = pairs[b_i*self.batch_size : (b_i+1)*self.batch_size]  # 取一个batch对应的pair用于读取数据
+                # chuck中包含： seq_id, start3d index, end3d index, flip or not,
+                # seq for camera index, start3d and end3d for calculating index of consecutive frames
                 for i, (seq_i, start_3d, end_3d, flip) in enumerate(chunks):
-                    start_2d = start_3d - self.pad - self.causal_shift
+                    start_2d = start_3d - self.pad - self.causal_shift  # pad：以中间帧为中心，往前或往后连续多少帧
                     end_2d = end_3d + self.pad - self.causal_shift
 
                     # 2D poses
-                    seq_2d = self.poses_2d[seq_i]
-                    low_2d = max(start_2d, 0)
-                    high_2d = min(end_2d, seq_2d.shape[0])
+                    seq_2d = self.poses_2d[seq_i]  # seq_i for camera id
+                    low_2d = max(start_2d, 0)  # get low index
+                    high_2d = min(end_2d, seq_2d.shape[0])  # get high index
                     pad_left_2d = low_2d - start_2d
                     pad_right_2d = end_2d - high_2d
                     if pad_left_2d != 0 or pad_right_2d != 0:
                         self.batch_2d[i] = np.pad(seq_2d[low_2d:high_2d], ((pad_left_2d, pad_right_2d), (0, 0), (0, 0)), 'edge')
                     else:
-                        self.batch_2d[i] = seq_2d[low_2d:high_2d]
+                        self.batch_2d[i] = seq_2d[low_2d:high_2d]  # get 2d results in consecutive frames
 
-                    if flip:
-                        # Flip 2D keypoints
+                    if flip:  # (data augmentation)
+                        # Flip 2D keypoints 左右关键点，u坐标flip
                         self.batch_2d[i, :, :, 0] *= -1
                         self.batch_2d[i, :, self.kps_left + self.kps_right] = self.batch_2d[i, :, self.kps_right + self.kps_left]
 
@@ -226,7 +233,7 @@ class UnchunkedGenerator:
     def set_augment(self, augment):
         self.augment = augment
     
-    def next_epoch(self):
+    def next_epoch(self):  # get each data from dataset
         for seq_cam, seq_3d, seq_2d in zip_longest(self.cameras, self.poses_3d, self.poses_2d):
             batch_cam = None if seq_cam is None else np.expand_dims(seq_cam, axis=0)
             batch_3d = None if seq_3d is None else np.expand_dims(seq_3d, axis=0)

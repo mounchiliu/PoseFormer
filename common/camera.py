@@ -26,8 +26,11 @@ def image_coordinates(X, w, h):
     
 
 def world_to_camera(X, R, t):
-    Rt = wrap(qinverse, R) # Invert rotation
-    return wrap(qrot, np.tile(Rt, (*X.shape[:-1], 1)), X - t) # Rotate and translate
+    Rt = wrap(qinverse, R)  # Invert rotation 四元数形式 (4,)
+
+    # X: N * 17 * 13, (*X.shape[:-1], 1): N * 17 * 1
+    # np.tile(Rt, (*X.shape[:-1], 1))将Rt扩充为[N, 17, 4]
+    return wrap(qrot, np.tile(Rt, (*X.shape[:-1], 1)), X - t)  # inverse Rotate and inverse translate
 
     
 def camera_to_world(X, R, t):
@@ -56,9 +59,9 @@ def project_to_2d(X, camera_params):
     k = camera_params[..., 4:7]
     p = camera_params[..., 7:]
     
-    XX = torch.clamp(X[..., :2] / X[..., 2:], min=-1, max=1)
+    XX = torch.clamp(X[..., :2] / X[..., 2:], min=-1, max=1)  # 归一化平面
     r2 = torch.sum(XX[..., :2]**2, dim=len(XX.shape)-1, keepdim=True)
-
+    # 畸变矫正
     radial = 1 + torch.sum(k * torch.cat((r2, r2**2, r2**3), dim=len(r2.shape)-1), dim=len(r2.shape)-1, keepdim=True)
     tan = torch.sum(p*XX, dim=len(XX.shape)-1, keepdim=True)
 

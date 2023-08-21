@@ -19,12 +19,12 @@ h36m_skeleton = Skeleton(parents=[-1,  0,  1,  2,  3,  4,  0,  6,  7,  8,  9,  0
 h36m_cameras_intrinsic_params = [
     {
         'id': '54138969',
-        'center': [512.54150390625, 515.4514770507812],
-        'focal_length': [1145.0494384765625, 1143.7811279296875],
-        'radial_distortion': [-0.20709891617298126, 0.24777518212795258, -0.0030751503072679043],
-        'tangential_distortion': [-0.0009756988729350269, -0.00142447161488235],
-        'res_w': 1000,
-        'res_h': 1002,
+        'center': [512.54150390625, 515.4514770507812],  # cx, cy
+        'focal_length': [1145.0494384765625, 1143.7811279296875], # fx, fy
+        'radial_distortion': [-0.20709891617298126, 0.24777518212795258, -0.0030751503072679043],  # k1,k2,k3
+        'tangential_distortion': [-0.0009756988729350269, -0.00142447161488235],  # p1, p2
+        'res_w': 1000,  # imagew
+        'res_h': 1002,  # imageh
         'azimuth': 70, # Only used for visualization
     },
     {
@@ -209,20 +209,25 @@ h36m_cameras_extrinsic_params = {
 class Human36mDataset(MocapDataset):
     def __init__(self, path, remove_static_joints=True):
         super().__init__(fps=50, skeleton=h36m_skeleton)
-        
-        self._cameras = copy.deepcopy(h36m_cameras_extrinsic_params)
-        for cameras in self._cameras.values():
-            for i, cam in enumerate(cameras):
-                cam.update(h36m_cameras_intrinsic_params[i])
-                for k, v in cam.items():
-                    if k not in ['id', 'res_w', 'res_h']:
-                        cam[k] = np.array(v, dtype='float32')
+
+        # human3.6M使用4个相机记录数据
+        # h36m_cameras_extrinsic_params定义在/common/h36m_dataset.py内
+        # 其中每一个subject表演者（如S1,S5,...），对应4个相机，因此有四个外参
+        self._cameras = copy.deepcopy(h36m_cameras_extrinsic_params)  # 赋值
+        for cameras in self._cameras.values():  # 遍历每个subject对应的外参
+            for i, cam in enumerate(cameras):  # 遍历每个subject内的各个相机的外参
+                cam.update(h36m_cameras_intrinsic_params[i])  # 获取对应相机的内参，内参文件中保存了4个相机的数据
+                for k, v in cam.items():  # 对每条外参数据的element进行处理
+                    if k not in ['id', 'res_w', 'res_h']:  # 省略重复信息：id,res_w, res_h
+                        cam[k] = np.array(v, dtype='float32')  # 添加外参到cam_dict
                 
                 # Normalize camera frame
+                # 将cx、cy依据相机所拍摄图像的w和h进行归一化 (center: cx, cy; res_w: image width, res_h: image height)
+                # 即将cx、cy mapping到[-1,1]上，并且保留w/H的ratio比例
                 cam['center'] = normalize_screen_coordinates(cam['center'], w=cam['res_w'], h=cam['res_h']).astype('float32')
-                cam['focal_length'] = cam['focal_length']/cam['res_w']*2
+                cam['focal_length'] = cam['focal_length']/cam['res_w']*2  # normalize focal length
                 if 'translation' in cam:
-                    cam['translation'] = cam['translation']/1000 # mm to meters
+                    cam['translation'] = cam['translation']/1000  # mm to meters
                 
                 # Add intrinsic parameters vector
                 cam['intrinsic'] = np.concatenate((cam['focal_length'],
@@ -230,19 +235,19 @@ class Human36mDataset(MocapDataset):
                                                    cam['radial_distortion'],
                                                    cam['tangential_distortion']))
         
-        # Load serialized dataset
+        # Load serialized dataset，读取3D坐标（动采的世界坐标系下）
         data = np.load(path, allow_pickle=True)['positions_3d'].item()
         
         self._data = {}
-        for subject, actions in data.items():
+        for subject, actions in data.items():  # 遍历每个subject
             self._data[subject] = {}
-            for action_name, positions in actions.items():
+            for action_name, positions in actions.items():  # 遍历每个subject的动作和3D position point
                 self._data[subject][action_name] = {
                     'positions': positions,
                     'cameras': self._cameras[subject],
                 }
                 
-        if remove_static_joints:
+        if remove_static_joints:  # human3.6M中特征点有冗余，删除部分特征点
             # Bring the skeleton to 17 joints instead of the original 32
             self.remove_joints([4, 5, 9, 10, 11, 16, 20, 21, 22, 23, 24, 28, 29, 30, 31])
             
