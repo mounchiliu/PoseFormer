@@ -219,7 +219,7 @@ class Human36mDataset(MocapDataset):
                 cam.update(h36m_cameras_intrinsic_params[i])  # 获取对应相机的内参，内参文件中保存了4个相机的数据
                 for k, v in cam.items():  # 对每条外参数据的element进行处理
                     if k not in ['id', 'res_w', 'res_h']:  # 省略重复信息：id,res_w, res_h
-                        cam[k] = np.array(v, dtype='float32')  # 添加外参到cam_dict
+                        cam[k] = np.array(v, dtype='float32')  # 对应数据调整格式、精度
                 
                 # Normalize camera frame
                 # 将cx、cy依据相机所拍摄图像的w和h进行归一化 (center: cx, cy; res_w: image width, res_h: image height)
