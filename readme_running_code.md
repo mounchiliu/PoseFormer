@@ -21,9 +21,7 @@ Refer to videoPose: https://github.com/facebookresearch/VideoPose3D/blob/main/DA
     ```
     Then, run the preprocessing script:
     ```commandline
-    cd data
     python ./data/prepare_data_h36m.py --from-source-cdf ./data/
-    cd ..
     ```
 
     If everything goes well, you are ready to go.
