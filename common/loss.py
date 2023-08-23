@@ -15,6 +15,11 @@ def mpjpe(predicted, target):
     """
     assert predicted.shape == target.shape
     return torch.mean(torch.norm(predicted - target, dim=len(target.shape)-1))
+    # 假设predicted: a1,a2,...a17 (1x17x3);target:b1,b2,...b17 (1x17x3) (a包含三维数）
+    # (predicted - target) = a1-b1,a2-b2,... (1x17x3)
+    # torch.norm(predicted - target, dim=len(target.shape)-1):按照最后一个维度进行norm，默认执行2范数,结果为1x17
+    # x1 = sqrt((ax1-bx1)^2+(ay1-by1)^2+(az1-bz1)^2), ..., x17=...
+    # xi求得是第一对点之间的欧式距离
     
 def weighted_mpjpe(predicted, target, w):
     """
